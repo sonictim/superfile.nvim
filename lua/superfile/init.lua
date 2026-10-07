@@ -1,11 +1,22 @@
 local config = require("superfile.config")
 local window = require("superfile.window")
+local actions = require("superfile.actions")
+
+local notify = actions.notify
 
 local M = {}
 
-local function notify(msg, level)
-  vim.notify(msg, level or vim.log.levels.INFO, { title = "superfile.nvim" })
-end
+---@class superfile.Instance
+---@field job integer
+---@field buf integer
+---@field win? integer       nil while hidden
+---@field chooser string
+---@field action string      what to do with the chosen path
+---@field origin_win integer window to return to
+---@field files_before table<integer, string>
+
+---@type superfile.Instance?
+local current
 
 --- The path superfile should start at: the current file (so it gets focused),
 --- or the cwd for unnamed/special buffers.
@@ -43,116 +54,206 @@ local function read_chooser(path)
   return content ~= "" and content or nil
 end
 
-local function open_chosen(path, open_cmd, origin_win)
-  local opts = config.options
-  if opts.on_file_chosen and opts.on_file_chosen(path, open_cmd) then
-    return
-  end
-
-  if vim.api.nvim_win_is_valid(origin_win) then
-    vim.api.nvim_set_current_win(origin_win)
-  end
-
-  if vim.fn.isdirectory(path) == 1 then
-    if opts.on_directory_chosen == "cd" then
-      vim.cmd.cd(vim.fn.fnameescape(path))
-      notify("cwd: " .. path)
-      return
-    elseif opts.on_directory_chosen == "ignore" then
-      return
-    end
-  end
-
-  vim.cmd[open_cmd](vim.fn.fnameescape(path))
+local function alive(inst)
+  return inst and vim.api.nvim_buf_is_valid(inst.buf) and vim.fn.jobwait({ inst.job }, 0)[1] == -1
 end
 
---- Open superfile in a floating terminal.
----@param path? string file or directory to start at (default: current file)
-function M.open(path)
+--- Close the float but keep superfile running so it can be resumed.
+---@param restore_focus boolean go back to the window superfile was opened from
+local function hide(inst, restore_focus)
+  if not (inst.win and vim.api.nvim_win_is_valid(inst.win)) then
+    return
+  end
+  vim.api.nvim_win_close(inst.win, true)
+  inst.win = nil
+  if restore_focus and vim.api.nvim_win_is_valid(inst.origin_win) then
+    vim.api.nvim_set_current_win(inst.origin_win)
+  end
+end
+
+local function kill(inst)
+  if inst.win and vim.api.nvim_win_is_valid(inst.win) then
+    vim.api.nvim_win_close(inst.win, true)
+  end
+  pcall(vim.fn.jobstop, inst.job)
+  if vim.api.nvim_buf_is_valid(inst.buf) then
+    vim.api.nvim_buf_delete(inst.buf, { force = true })
+  end
+  os.remove(inst.chooser)
+end
+
+local function show(inst)
+  inst.origin_win = vim.api.nvim_get_current_win()
+  inst.files_before = actions.existing_file_buffers()
+  inst.action = "edit"
+  -- Clicking/jumping to another window: hide (resume mode) or quit superfile.
+  inst.win = window.show(inst.buf, function()
+    if not (inst.win and vim.api.nvim_win_is_valid(inst.win)) then
+      return
+    end
+    if config.options.resume then
+      hide(inst, false)
+    else
+      kill(inst)
+      if current == inst then
+        current = nil
+      end
+    end
+  end)
+  vim.cmd.startinsert()
+end
+
+local function set_keymaps(inst)
+  local km = config.options.keymaps
+  local opts = function(desc)
+    return { buffer = inst.buf, desc = "superfile: " .. desc }
+  end
+  for name, action in pairs(actions.keymap_actions) do
+    if km[name] then
+      vim.keymap.set("t", km[name], function()
+        inst.action = action
+        vim.api.nvim_chan_send(inst.job, config.options.superfile_choose_key)
+      end, opts(name:gsub("_", " ")))
+    end
+  end
+  local toggle_key = config.options.toggle_key
+  if toggle_key then
+    vim.keymap.set("t", toggle_key, function()
+      if config.options.resume then
+        hide(inst, true)
+      else
+        kill(inst)
+        if current == inst then
+          current = nil
+        end
+      end
+    end, opts("toggle"))
+  end
+  if km.hide and config.options.resume then
+    vim.keymap.set("t", km.hide, function()
+      hide(inst, true)
+    end, opts("hide"))
+  end
+end
+
+local function start(path)
   local exe = config.executable()
   if not exe then
     notify("superfile executable not found (looked for `spf` and `superfile`)", vim.log.levels.ERROR)
     return
   end
 
-  path = path and vim.fn.expand(path) or default_path()
-  local origin_win = vim.api.nvim_get_current_win()
-  local chooser = vim.fn.tempname()
-  local state = { open_cmd = "edit" }
+  ---@type superfile.Instance
+  local inst = {
+    buf = window.create_buf(),
+    chooser = vim.fn.tempname(),
+    action = "edit",
+    origin_win = vim.api.nvim_get_current_win(),
+    job = 0,
+    files_before = {},
+  }
 
-  local cmd = { exe, "--chooser-file", chooser }
+  local cmd = { exe, "--chooser-file", inst.chooser }
   if config.options.change_neovim_cwd_on_close then
     table.insert(cmd, "--print-last-dir")
   end
   vim.list_extend(cmd, config.options.args)
   table.insert(cmd, path)
 
-  local buf, win = window.open()
-
   local function on_exit(_, code)
-    -- If the window/buffer is already gone, the user closed it on purpose and
-    -- superfile was killed with SIGHUP; don't treat that as an error.
-    local aborted = not vim.api.nvim_buf_is_valid(buf)
+    -- If the buffer is already gone, superfile was stopped on purpose.
+    local aborted = not vim.api.nvim_buf_is_valid(inst.buf)
     vim.schedule(function()
-      local chosen = read_chooser(chooser)
-      local last_dir = not chosen and config.options.change_neovim_cwd_on_close and read_last_dir(buf)
+      if current == inst then
+        current = nil
+      end
+      local chosen = read_chooser(inst.chooser)
+      local last_dir = not chosen and config.options.change_neovim_cwd_on_close and read_last_dir(inst.buf)
 
-      if vim.api.nvim_win_is_valid(win) then
+      local win = inst.win
+      inst.win = nil -- so the WinLeave hide handler is a no-op
+      if win and vim.api.nvim_win_is_valid(win) then
         vim.api.nvim_win_close(win, true)
       end
-      if vim.api.nvim_buf_is_valid(buf) then
-        vim.api.nvim_buf_delete(buf, { force = true })
+      if vim.api.nvim_buf_is_valid(inst.buf) then
+        vim.api.nvim_buf_delete(inst.buf, { force = true })
+      end
+      if aborted then
+        return
+      end
+      if vim.api.nvim_win_is_valid(inst.origin_win) then
+        vim.api.nvim_set_current_win(inst.origin_win)
       end
 
-      -- superfile may have renamed/deleted files that are open in buffers.
+      -- superfile may have changed files that are open in buffers.
       vim.cmd("silent! checktime")
+      actions.handle_deleted(inst.files_before)
 
       if chosen then
-        open_chosen(chosen, state.open_cmd, origin_win)
+        actions.run(inst.action, chosen)
       elseif last_dir and last_dir ~= vim.fn.getcwd() then
         vim.cmd.cd(vim.fn.fnameescape(last_dir))
         notify("cwd: " .. last_dir)
-      elseif code ~= 0 and not aborted then
+      elseif code ~= 0 then
         notify("superfile exited with code " .. code, vim.log.levels.WARN)
       end
     end)
   end
 
+  -- Start the job inside the new buffer before showing it, so the terminal
+  -- is sized by the float.
+  show(inst)
   local job_opts = { on_exit = on_exit, cwd = vim.fn.getcwd() }
-  local job
   if vim.fn.has("nvim-0.11") == 1 then
     job_opts.term = true
-    job = vim.fn.jobstart(cmd, job_opts)
+    inst.job = vim.fn.jobstart(cmd, job_opts)
   else
-    job = vim.fn.termopen(cmd, job_opts)
+    inst.job = vim.fn.termopen(cmd, job_opts)
   end
-  if job <= 0 then
+  if inst.job <= 0 then
     notify("failed to start superfile", vim.log.levels.ERROR)
-    pcall(vim.api.nvim_win_close, win, true)
+    kill(inst)
     return
   end
 
-  local keymap_cmds = {
-    open_in_vsplit = "vsplit",
-    open_in_split = "split",
-    open_in_tab = "tabedit",
-  }
-  for name, open_cmd in pairs(keymap_cmds) do
-    local lhs = config.options.keymaps[name]
-    if lhs then
-      vim.keymap.set("t", lhs, function()
-        state.open_cmd = open_cmd
-        vim.api.nvim_chan_send(job, config.options.superfile_open_key)
-      end, { buffer = buf, desc = "superfile: " .. name:gsub("_", " ") })
-    end
-  end
+  set_keymaps(inst)
+  current = inst
+end
 
-  vim.cmd.startinsert()
+--- Open superfile in a floating terminal. With `resume` on and no `path`,
+--- brings back the hidden instance if there is one.
+---@param path? string file or directory to start at (default: current file)
+function M.open(path)
+  if not path and config.options.resume and alive(current) then
+    if not (current.win and vim.api.nvim_win_is_valid(current.win)) then
+      show(current)
+    end
+    return
+  end
+  if current then
+    kill(current)
+    current = nil
+  end
+  start(path and vim.fn.expand(path) or default_path())
 end
 
 --- Open superfile at Neovim's cwd.
 function M.open_cwd()
   M.open(vim.fn.getcwd())
+end
+
+--- Resume the hidden superfile where you left it, or open a new one.
+--- If it's currently showing, hide it.
+function M.toggle()
+  if alive(current) then
+    if current.win and vim.api.nvim_win_is_valid(current.win) then
+      hide(current, true)
+    else
+      show(current)
+    end
+  else
+    M.open()
+  end
 end
 
 local function setup_directory_hijack()
@@ -182,8 +283,19 @@ end
 
 function M.setup(opts)
   config.setup(opts)
+  if config.options.toggle_key then
+    vim.keymap.set("n", config.options.toggle_key, M.toggle, { desc = "superfile: toggle" })
+  end
   if config.options.open_for_directories then
     setup_directory_hijack()
+  end
+end
+
+--- Stop any running superfile, hidden or not.
+function M.stop()
+  if current then
+    kill(current)
+    current = nil
   end
 end
 

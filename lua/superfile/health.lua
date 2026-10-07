@@ -32,7 +32,22 @@ function M.check()
     health.warn("--print-last-dir unsupported; change_neovim_cwd_on_close won't work")
   end
 
+  local pickers = {}
+  for _, mod in ipairs({ "telescope", "fzf-lua", "snacks", "mini.pick" }) do
+    if pcall(require, mod) then
+      table.insert(pickers, mod)
+    end
+  end
+  if #pickers > 0 then
+    health.ok("picker for grep/find in folder: " .. table.concat(pickers, ", "))
+  else
+    health.warn("no picker found (telescope, fzf-lua, snacks, mini.pick); <C-o>g / <C-o>f need one or `integrations`")
+  end
+
   local opts = require("superfile.config").options
+  if opts.toggle_key and #opts.toggle_key == 1 then
+    health.warn(("toggle_key %q is a printable character; you won't be able to type it inside superfile"):format(opts.toggle_key))
+  end
   if opts.open_for_directories and vim.g.loaded_netrwPlugin ~= 1 then
     health.warn("open_for_directories is on but netrw is still loaded; set vim.g.loaded_netrwPlugin = 1")
   end
