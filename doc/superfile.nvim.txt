@@ -1,0 +1,53 @@
+*superfile.nvim.txt*   superfile file manager in a floating window
+
+==============================================================================
+CONTENTS                                              *superfile.nvim*
+
+Open superfile (https://github.com/yorukot/superfile) in a floating terminal
+and open the files you pick in Neovim.
+
+==============================================================================
+COMMANDS                                              *:Superfile*
+
+:Superfile              Open at the current file (cursor lands on it).
+:Superfile cwd          Open at Neovim's current working directory.
+:Superfile {path}       Open at {path}.
+
+==============================================================================
+KEYS (inside superfile)                               *superfile-keys*
+
+Enter / l / e           Open the focused file in Neovim with |:edit|.
+<C-o>v                  Open in a vertical split.
+<C-o>s                  Open in a horizontal split.
+<C-o>t                  Open in a new tab.
+q                       Quit superfile.
+
+==============================================================================
+SETUP                                                 *superfile.setup()*
+
+>lua
+    require("superfile").setup({
+      cmd = nil,
+      args = {},
+      open_for_directories = false,
+      change_neovim_cwd_on_close = false,
+      on_directory_chosen = "edit",   -- "edit" | "cd" | "ignore"
+      floating_window = { width = 0.9, height = 0.9, border = "rounded" },
+      keymaps = {
+        open_in_vsplit = "<C-o>v",
+        open_in_split = "<C-o>s",
+        open_in_tab = "<C-o>t",
+      },
+      on_file_chosen = nil,           -- fun(path, open_cmd): boolean
+    })
+<
+See README.md for details on each option. Run |:checkhealth| superfile
+to check your setup.
+
+==============================================================================
+LUA API                                               *superfile-api*
+
+require("superfile").open({path})     Open at {path} (default: current file).
+require("superfile").open_cwd()       Open at the cwd.
+
+ vim:tw=78:ts=8:ft=help:norl:
