@@ -103,36 +103,105 @@ local function show(inst)
   vim.cmd.startinsert()
 end
 
+local function close_or_hide(inst)
+  if config.options.resume then
+    hide(inst, true)
+  else
+    kill(inst)
+    if current == inst then
+      current = nil
+    end
+  end
+end
+
+-- Display order for the prefix hint.
+local hint_order = {
+  { "open_in_vsplit", "vsplit" },
+  { "open_in_split", "split" },
+  { "open_in_tab", "tab" },
+  { "grep_in_directory", "grep" },
+  { "find_in_directory", "find" },
+  { "copy_relative_path", "copy path" },
+  { "copy_absolute_path", "copy abs path" },
+  { "hide", "hide" },
+}
+
 local function set_keymaps(inst)
   local km = config.options.keymaps
   local opts = function(desc)
     return { buffer = inst.buf, desc = "superfile: " .. desc }
   end
+
+  -- name -> function, for every enabled action key
+  local handlers = {}
   for name, action in pairs(actions.keymap_actions) do
-    if km[name] then
-      vim.keymap.set("t", km[name], function()
-        inst.action = action
-        vim.api.nvim_chan_send(inst.job, config.options.superfile_choose_key)
-      end, opts(name:gsub("_", " ")))
+    handlers[name] = function()
+      inst.action = action
+      vim.api.nvim_chan_send(inst.job, config.options.superfile_choose_key)
     end
   end
+  if config.options.resume then
+    handlers.hide = function()
+      hide(inst, true)
+    end
+  end
+
+  if km.prefix then
+    -- Press the prefix, then one key. The second key is read directly with
+    -- getcharstr(), so it doesn't depend on 'timeoutlen'.
+    local by_key = {}
+    local hint = { { "superfile: ", "Title" } }
+    for _, item in ipairs(hint_order) do
+      local name, label = item[1], item[2]
+      local key = km[name]
+      if key and handlers[name] then
+        by_key[key] = handlers[name]
+        table.insert(hint, { key, "Special" })
+        table.insert(hint, { " " .. label .. "  ", "Normal" })
+      end
+    end
+    table.insert(hint, { "esc", "Special" })
+    table.insert(hint, { " cancel", "Normal" })
+
+    vim.keymap.set("t", km.prefix, function()
+      vim.api.nvim_echo(hint, false, {})
+      vim.cmd.redraw()
+      local ok, key = pcall(vim.fn.getcharstr)
+      vim.api.nvim_echo({ { "" } }, false, {})
+      if not ok or key == vim.keycode("<Esc>") then
+        return
+      end
+      local handler = by_key[key]
+      if handler then
+        -- Run after this mapping returns: closing the terminal window from
+        -- inside it (e.g. hide) can crash Neovim.
+        vim.schedule(handler)
+      else
+        -- Not one of ours: send the key as-is. This is also how you type a
+        -- character that's taken by `direct_keymaps` (e.g. <C-o>- types "-").
+        vim.api.nvim_chan_send(inst.job, key)
+      end
+    end, opts("actions"))
+  else
+    -- No prefix: each action key is its own terminal mapping.
+    for name, handler in pairs(handlers) do
+      if km[name] then
+        vim.keymap.set("t", km[name], handler, opts(name:gsub("_", " ")))
+      end
+    end
+  end
+
+  for name, lhs in pairs(config.options.direct_keymaps) do
+    if lhs and handlers[name] then
+      vim.keymap.set("t", lhs, handlers[name], opts(name:gsub("_", " ")))
+    end
+  end
+
   local toggle_key = config.options.toggle_key
   if toggle_key then
     vim.keymap.set("t", toggle_key, function()
-      if config.options.resume then
-        hide(inst, true)
-      else
-        kill(inst)
-        if current == inst then
-          current = nil
-        end
-      end
+      close_or_hide(inst)
     end, opts("toggle"))
-  end
-  if km.hide and config.options.resume then
-    vim.keymap.set("t", km.hide, function()
-      hide(inst, true)
-    end, opts("hide"))
   end
 end
 

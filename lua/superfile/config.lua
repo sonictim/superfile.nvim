@@ -46,19 +46,29 @@ M.defaults = {
     winblend = 0,
   },
 
-  -- Terminal-mode keymaps active inside the superfile window. Set any to false
-  -- to disable it. Defaults use a <C-o> prefix to avoid superfile's own ctrl
-  -- hotkeys (<C-v> paste, <C-x> cut, ...).
+  -- Keys inside the superfile window. Press `prefix`, then one of the keys
+  -- below. The second key is read with no timeout, so 'timeoutlen' doesn't
+  -- matter. Set `prefix = false` to map each key directly instead (then use
+  -- full key notation, e.g. open_in_vsplit = "<M-v>"). Set any key to false to
+  -- disable it. <C-o> is the default because superfile uses most single ctrl
+  -- keys (<C-v> paste, <C-x> cut, ...).
   keymaps = {
-    open_in_vsplit = "<C-o>v",
-    open_in_split = "<C-o>s",
-    open_in_tab = "<C-o>t",
-    grep_in_directory = "<C-o>g",
-    find_in_directory = "<C-o>f",
-    copy_relative_path = "<C-o>y",
-    copy_absolute_path = "<C-o>Y",
-    hide = "<C-o>h", -- only with `resume = true`
+    prefix = "<C-o>",
+    open_in_vsplit = "v",
+    open_in_split = "s",
+    open_in_tab = "t",
+    grep_in_directory = "g",
+    find_in_directory = "f",
+    copy_relative_path = "y",
+    copy_absolute_path = "Y",
+    hide = "h", -- only with `resume = true`
   },
+
+  -- Extra single keys mapped directly inside superfile (no prefix), using the
+  -- same action names as `keymaps`, e.g. { open_in_vsplit = "\\", open_in_split = "-" }.
+  -- A printable key here can't be typed in superfile's search/rename prompts;
+  -- press the prefix first to type it (<C-o>- types "-").
+  direct_keymaps = {},
 
   -- The superfile key that hands the focused item back to Neovim. It must be
   -- bound to `open_file_with_editor` in superfile (default `e`), which works on

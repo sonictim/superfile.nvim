@@ -18,7 +18,8 @@ COMMANDS                                              *:Superfile*
 ==============================================================================
 KEYS (inside superfile)                               *superfile-keys*
 
-Enter / l / e           Open the focused file in Neovim with |:edit|.
+Press <C-o>, then one key. The second key has no timeout.
+
 <C-o>v                  Open in a vertical split.
 <C-o>s                  Open in a horizontal split.
 <C-o>t                  Open in a new tab.
@@ -28,10 +29,16 @@ Enter / l / e           Open the focused file in Neovim with |:edit|.
 <C-o>y                  Copy the path, relative to Neovim's cwd.
 <C-o>Y                  Copy the absolute path.
 <C-o>h                  Hide superfile (only with `resume = true`).
+<C-o><Esc>              Cancel.
+<C-o>{other}            Send {other} to superfile as-is (e.g. <C-o>- types
+                        "-" when "-" is a direct key).
+
 {toggle_key}            Hide superfile, or quit it if `resume = false`.
+{direct_keymaps}        Any action above on a single key, no prefix.
+Enter / l / e           Open the focused file with |:edit| (superfile keys).
 q                       Quit superfile.
 
-The <C-o> keys work on folders as well as files.
+The action keys work on folders as well as files.
 
 ==============================================================================
 SETUP                                                 *superfile.setup()*
@@ -49,15 +56,17 @@ SETUP                                                 *superfile.setup()*
       copy_registers = { "+", '"' },
       floating_window = { width = 0.9, height = 0.9, border = "rounded" },
       keymaps = {
-        open_in_vsplit = "<C-o>v",
-        open_in_split = "<C-o>s",
-        open_in_tab = "<C-o>t",
-        grep_in_directory = "<C-o>g",
-        find_in_directory = "<C-o>f",
-        copy_relative_path = "<C-o>y",
-        copy_absolute_path = "<C-o>Y",
-        hide = "<C-o>h",
+        prefix = "<C-o>",
+        open_in_vsplit = "v",
+        open_in_split = "s",
+        open_in_tab = "t",
+        grep_in_directory = "g",
+        find_in_directory = "f",
+        copy_relative_path = "y",
+        copy_absolute_path = "Y",
+        hide = "h",
       },
+      direct_keymaps = {},            -- e.g. { open_in_vsplit = "\\" }
       superfile_choose_key = "e",
       integrations = { grep_in_directory = nil, find_in_directory = nil },
       on_file_chosen = nil,           -- fun(path, action): boolean
