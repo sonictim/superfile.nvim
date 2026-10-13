@@ -8,7 +8,8 @@ M.defaults = {
   args = {},
 
   -- Replace netrw: open superfile when Neovim opens a directory buffer.
-  -- (You'll want `vim.g.loaded_netrwPlugin = 1` for this.)
+  -- (You'll want `vim.g.loaded_netrwPlugin = 1` for this. Neovim 0.13's
+  -- built-in directory browser is turned off automatically.)
   open_for_directories = false,
 
   -- After superfile quits normally, `:cd` Neovim into the last directory it was in.
@@ -16,6 +17,8 @@ M.defaults = {
 
   -- What to do when superfile hands back a directory (e.g. `e` on a folder).
   -- "edit" = `:edit dir` (netrw/oil/etc.), "cd" = `:cd dir`, "ignore" = do nothing.
+  -- With `open_for_directories`, "edit" browses the directory in superfile
+  -- instead (in the new split/tab, for those actions).
   on_directory_chosen = "edit",
 
   -- Keep superfile running when its window is hidden (clicking away or the

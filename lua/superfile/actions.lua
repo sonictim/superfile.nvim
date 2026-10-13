@@ -22,6 +22,15 @@ local function open(path, cmd)
     elseif mode == "ignore" then
       return
     end
+    if config.options.open_for_directories then
+      -- Superfile owns directories: make the split/tab, then browse the
+      -- directory there instead of :edit-ing it and bouncing off the hijack.
+      if cmd ~= "edit" then
+        vim.cmd[cmd]()
+      end
+      require("superfile").open(path)
+      return
+    end
   end
   vim.cmd[cmd](vim.fn.fnameescape(path))
 end

@@ -342,8 +342,10 @@ local function setup_directory_hijack()
       else
         vim.cmd.enew()
       end
-      pcall(vim.api.nvim_buf_delete, ev.buf, { force = true })
+      -- Delete it after this BufEnter is done: other BufEnter handlers still
+      -- get ev.buf and error on an invalid buffer.
       vim.schedule(function()
+        pcall(vim.api.nvim_buf_delete, ev.buf, { force = true })
         M.open(name)
       end)
     end,
@@ -356,6 +358,11 @@ function M.setup(opts)
     vim.keymap.set("n", config.options.toggle_key, M.toggle, { desc = "superfile: toggle" })
   end
   if config.options.open_for_directories then
+    -- Neovim 0.13+ has its own directory browser (not covered by
+    -- loaded_netrwPlugin). Stop it loading, or drop its autocmds if it
+    -- already has, so only superfile handles directories.
+    vim.g.loaded_nvim_dir_plugin = true
+    pcall(vim.api.nvim_clear_autocmds, { group = "nvim.dir" })
     setup_directory_hijack()
   end
 end

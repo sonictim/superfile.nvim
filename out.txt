@@ -1,0 +1,4 @@
+before: win=1002 mode=t bt=terminal ft=superfile
+after: win=1000 mode=n bt= ft=markdown
+errmsg=
+messages=

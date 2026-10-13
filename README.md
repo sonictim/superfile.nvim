@@ -59,6 +59,9 @@ in `init`.
 | `:checkhealth superfile` | Check the superfile version, flags, available pickers, and config. |
 
 Opening a folder (`nvim .`, `:e src/`) also opens superfile when `open_for_directories = true`.
+This also turns off Neovim 0.13's built-in directory browser, which `loaded_netrwPlugin` doesn't
+cover. With it on, choosing a folder with a split, vsplit, or tab key opens the split (or tab) and
+browses the folder in superfile there.
 
 ## Keys inside superfile
 
@@ -155,7 +158,8 @@ require("superfile").setup({
   -- extra CLI args for superfile, e.g. { "-c", "~/alt-config.toml" }
   args = {},
 
-  -- open superfile when Neovim opens a folder (set vim.g.loaded_netrwPlugin = 1 too)
+  -- open superfile when Neovim opens a folder (set vim.g.loaded_netrwPlugin = 1 too;
+  -- Neovim 0.13's built-in directory browser is turned off for you)
   open_for_directories = false,
   -- after quitting with q, :cd Neovim to superfile's last folder
   change_neovim_cwd_on_close = false,
