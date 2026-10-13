@@ -18,7 +18,7 @@ M.defaults = {
   -- What to do when superfile hands back a directory (e.g. `e` on a folder).
   -- "edit" = `:edit dir` (netrw/oil/etc.), "cd" = `:cd dir`, "ignore" = do nothing.
   -- With `open_for_directories`, "edit" browses the directory in superfile
-  -- instead (in the new split/tab, for those actions).
+  -- instead, and the split/vsplit/tab actions skip directories.
   on_directory_chosen = "edit",
 
   -- Keep superfile running when its window is hidden (clicking away or the

@@ -60,8 +60,7 @@ in `init`.
 
 Opening a folder (`nvim .`, `:e src/`) also opens superfile when `open_for_directories = true`.
 This also turns off Neovim 0.13's built-in directory browser, which `loaded_netrwPlugin` doesn't
-cover. With it on, choosing a folder with a split, vsplit, or tab key opens the split (or tab) and
-browses the folder in superfile there.
+cover. With it on, the split, vsplit, and tab keys only open files: on a folder they do nothing.
 
 ## Keys inside superfile
 
