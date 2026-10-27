@@ -132,6 +132,12 @@ local function set_keymaps(inst)
     return { buffer = inst.buf, desc = "superfile: " .. desc }
   end
 
+  -- superfile uses <Esc> (close help, cancel prompts, quit). Send it straight
+  -- through so a global terminal-mode <Esc> mapping can't grab it first.
+  vim.keymap.set("t", "<Esc>", function()
+    vim.api.nvim_chan_send(inst.job, "\27")
+  end, opts("send <Esc>"))
+
   -- name -> function, for every enabled action key
   local handlers = {}
   for name, action in pairs(actions.keymap_actions) do
